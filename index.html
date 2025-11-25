@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>슈퍼 마리오 게임</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.0/firebase-database-compat.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+        
+        * {
+            font-family: 'Press Start 2P', cursive;
+        }
+        
+        #gameCanvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+        
+        .mario-btn {
+            background: linear-gradient(180deg, #e52521 0%, #8b0000 100%);
+            border: 4px solid #000;
+            box-shadow: 4px 4px 0 #000;
+            transition: all 0.1s;
+        }
+        
+        .mario-btn:hover {
+            transform: translate(2px, 2px);
+            box-shadow: 2px 2px 0 #000;
+        }
+        
+        .mario-btn:active {
+            transform: translate(4px, 4px);
+            box-shadow: 0 0 0 #000;
+        }
+        
+        .pixel-border {
+            border: 4px solid #000;
+            box-shadow: 4px 4px 0 #000;
+        }
+        
+        @keyframes jump {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        .jumping {
+            animation: jump 0.5s ease-in-out infinite;
+        }
+        
+        .cloud {
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body class="bg-sky-400 min-h-screen">
+    <!-- 로그인 화면 -->
+    <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-yellow-400 pixel-border p-8 max-w-md w-full text-center">
+            <h1 class="text-2xl md:text-3xl text-red-600 mb-2">SUPER</h1>
+            <h1 class="text-3xl md:text-4xl text-red-600 mb-8">MARIO</h1>
+            
+            <!-- 마리오 캐릭터 -->
+            <div class="text-6xl mb-8 jumping">🍄</div>
+            
+            <div id="authContainer">
+                <input type="email" id="emailInput" placeholder="이메일" 
+                    class="w-full p-3 mb-4 text-xs pixel-border bg-white">
+                <input type="password" id="passwordInput" placeholder="비밀번호" 
+                    class="w-full p-3 mb-4 text-xs pixel-border bg-white">
+                
+                <button onclick="login()" class="mario-btn text-white px-6 py-3 text-xs w-full mb-3">
+                    로그인
+                </button>
+                <button onclick="register()" class="mario-btn text-white px-6 py-3 text-xs w-full mb-3" 
+                    style="background: linear-gradient(180deg, #4CAF50 0%, #2E7D32 100%);">
+                    회원가입
+                </button>
+                <button onclick="guestLogin()" class="mario-btn text-white px-6 py-3 text-xs w-full"
+                    style="background: linear-gradient(180deg, #2196F3 0%, #1565C0 100%);">
+                    게스트 플레이
+                </button>
+            </div>
+            
+            <p id="authMessage" class="text-xs mt-4 text-red-800"></p>
+        </div>
+    </div>
+
+    <!-- 메인 메뉴 -->
+    <div id="menuScreen" class="min-h-screen flex items-center justify-center p-4 hidden">
+        <div class="bg-yellow-400 pixel-border p-8 max-w-md w-full text-center">
+            <h1 class="text-2xl text-red-600 mb-4">SUPER MARIO</h1>
+            <p id="welcomeText" class="text-xs mb-6">환영합니다!</p>
+            
+            <div class="space-y-4">
+                <button onclick="startGame()" class="mario-btn text-white px-6 py-4 text-sm w-full">
+                    🎮 게임 시작
+                </button>
+                <button onclick="showLeaderboard()" class="mario-btn text-white px-6 py-4 text-sm w-full"
+                    style="background: linear-gradient(180deg, #FFD700 0%, #B8860B 100%);">
+                    🏆 순위표
+                </button>
+                <button onclick="showHowToPlay()" class="mario-btn text-white px-6 py-4 text-sm w-full"
+                    style="background: linear-gradient(180deg, #4CAF50 0%, #2E7D32 100%);">
+                    📖 게임 방법
+                </button>
+                <button onclick="logout()" class="mario-btn text-white px-6 py-4 text-sm w-full"
+                    style="background: linear-gradient(180deg, #666 0%, #333 100%);">
+                    🚪 로그아웃
+                </button>
+            </div>
+            
+            <div class="mt-6 p-4 bg-white pixel-border">
+                <p class="text-xs">최고 점수: <span id="myBestScore">0</span></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- 게임 화면 -->
+    <div id="gameScreen" class="min-h-screen flex flex-col items-center justify-center p-4 hidden">
+        <div class="bg-black pixel-border p-2 mb-4">
+            <div class="flex justify-between text-white text-xs mb-2 px-2">
+                <span>점수: <span id="scoreDisplay">0</span></span>
+                <span>코인: <span id="coinDisplay">0</span></span>
+                <span>생명: <span id="lifeDisplay">3</span></span>
+            </div>
+            <canvas id="gameCanvas" width="800" height="400"></canvas>
+        </div>
+        
+        <!-- 모바일 컨트롤 -->
+        <div class="flex gap-4 md:hidden">
+            <button id="leftBtn" class="mario-btn text-white px-8 py-4 text-xl">◀</button>
+            <button id="jumpBtn" class="mario-btn text-white px-8 py-4 text-xl"
+                style="background: linear-gradient(180deg, #4CAF50 0%, #2E7D32 100%);">▲</button>
+            <button id="rightBtn" class="mario-btn text-white px-8 py-4 text-xl">▶</button>
+        </div>
+        
+        <p class="text-white text-xs mt-4 hidden md:block">방향키로 이동, 스페이스바로 점프</p>
+    </div>
+
+    <!-- 순위표 화면 -->
+    <div id="leaderboardScreen" class="min-h-screen flex items-center justify-center p-4 hidden">
+        <div class="bg-yellow-400 pixel-border p-8 max-w-lg w-full">
+            <h2 class="text-xl text-red-600 text-center mb-6">🏆 TOP 10 🏆</h2>
+            
+            <div id="leaderboardList" class="space-y-2 mb-6 max-h-96 overflow-y-auto">
+                <!-- 순위 목록 -->
+            </div>
+            
+            <button onclick="showMenu()" class="mario-btn text-white px-6 py-3 text-xs w-full">
+                돌아가기
+            </button>
+        </div>
+    </div>
+
+    <!-- 게임 방법 화면 -->
+    <div id="howToPlayScreen" class="min-h-screen flex items-center justify-center p-4 hidden">
+        <div class="bg-yellow-400 pixel-border p-8 max-w-lg w-full">
+            <h2 class="text-xl text-red-600 text-center mb-6">📖 게임 방법</h2>
+            
+            <div class="bg-white pixel-border p-4 mb-6 text-xs leading-relaxed space-y-4">
+                <p>🎮 <strong>조작법</strong></p>
+                <p>← → : 좌우 이동</p>
+                <p>스페이스바 : 점프</p>
+                <p class="mt-4">🎯 <strong>목표</strong></p>
+                <p>코인을 모으고 적을 피해 최대한 멀리 가세요!</p>
+                <p class="mt-4">⚠️ <strong>주의</strong></p>
+                <p>적(굼바)을 밟으면 처치!</p>
+                <p>옆에서 부딪히면 생명 -1</p>
+                <p>구덩이에 빠지면 게임 오버!</p>
+            </div>
+            
+            <button onclick="showMenu()" class="mario-btn text-white px-6 py-3 text-xs w-full">
+                돌아가기
+            </button>
+        </div>
+    </div>
+
+    <!-- 게임 오버 화면 -->
+    <div id="gameOverScreen" class="min-h-screen flex items-center justify-center p-4 hidden">
+        <div class="bg-yellow-400 pixel-border p-8 max-w-md w-full text-center">
+            <h2 class="text-2xl text-red-600 mb-6">GAME OVER</h2>
+            
+            <div class="bg-white pixel-border p-4 mb-6">
+                <p class="text-xs mb-2">최종 점수</p>
+                <p class="text-2xl text-red-600" id="finalScore">0</p>
+                <p class="text-xs mt-2">코인: <span id="finalCoins">0</span></p>
+            </div>
+            
+            <div class="space-y-3">
+                <button onclick="startGame()" class="mario-btn text-white px-6 py-3 text-xs w-full">
+                    다시 하기
+                </button>
+                <button onclick="showMenu()" class="mario-btn text-white px-6 py-3 text-xs w-full"
+                    style="background: linear-gradient(180deg, #666 0%, #333 100%);">
+                    메뉴로
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ⬇️⬇️⬇️ 여기에 본인의 Firebase 설정값을 넣으세요! ⬇️⬇️⬇️
+        // 
+        // 📌 설정값 찾는 방법:
+        // 1. https://console.firebase.google.com 접속
+        // 2. 프로젝트 클릭
+        // 3. 톱니바퀴(⚙️) → 프로젝트 설정
+        // 4. 아래로 스크롤 → "내 앱" 섹션
+        // 5. "구성" 선택 → 아래 값들 복사
+        //
+        const firebaseConfig = {
+            apiKey: "AIzaSyCc3ZkW1rg42pzQ74kp4gkWI66IVrDweTo",                    // ← 본인 값으로 교체
+            authDomain: "supermrio-b454c.firebaseapp.com",              // ← 본인 값으로 교체
+            databaseURL: "https://console.firebase.google.com/project/supermrio-b454c/database/supermrio-b454c-default-rtdb/data?hl=ko&fb_gclid=EAIaIQobChMI5rfLx-aMkQMVB_tMAh1NjCSbEAAYASAAEgK3ZvD_BwE",  // ← 본인 값으로 교체 (중요!)
+            projectId: "supermrio-b454c",                               // ← 본인 값으로 교체
+            storageBucket: "supermrio-b454c.firebasestorage.app",               // ← 본인 값으로 교체
+            messagingSenderId: "1031587717506",                        // ← 본인 값으로 교체
+            appId: "1:1031587717506:web:0bb68070e9ee1bb74a6f9b"               // ← 본인 값으로 교체
+        };
+        // ⬆️⬆️⬆️ 위의 값들을 모두 본인 Firebase 값으로 바꾸세요! ⬆️⬆️⬆️
+
+        // Firebase 초기화
+        let app, auth, database;
+        let currentUser = null;
+        let isGuest = false;
+
+        try {
+            app = firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            database = firebase.database();
+        } catch (e) {
+            console.log("Firebase 초기화 실패 - 데모 모드로 실행");
+        }
+
+        // 로컬 스토리지 기반 데모 데이터
+        let localScores = JSON.parse(localStorage.getItem('marioScores') || '[]');
+        let myBestScore = parseInt(localStorage.getItem('myBestScore') || '0');
+
+        // 인증 함수들
+        async function login() {
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            
+            if (!email || !password) {
+                showAuthMessage('이메일과 비밀번호를 입력하세요');
+                return;
+            }
+
+            try {
+                if (auth) {
+                    await auth.signInWithEmailAndPassword(email, password);
+                    currentUser = auth.currentUser;
+                    isGuest = false;
+                    showMenu();
+                } else {
+                    // 데모 모드
+                    currentUser = { email: email, displayName: email.split('@')[0] };
+                    isGuest = false;
+                    localStorage.setItem('demoUser', JSON.stringify(currentUser));
+                    showMenu();
+                }
+            } catch (error) {
+                showAuthMessage('로그인 실패: ' + error.message);
+            }
+        }
+
+        async function register() {
+            const email = document.getElementById('emailInput').value;
+            const password = document.getElementById('passwordInput').value;
+            
+            if (!email || !password) {
+                showAuthMessage('이메일과 비밀번호를 입력하세요');
+                return;
+            }
+
+            if (password.length < 6) {
+                showAuthMessage('비밀번호는 6자 이상이어야 합니다');
+                return;
+            }
+
+            try {
+                if (auth) {
+                    await auth.createUserWithEmailAndPassword(email, password);
+                    currentUser = auth.currentUser;
+                    isGuest = false;
+                    showAuthMessage('회원가입 성공!', 'green');
+                    setTimeout(() => showMenu(), 1000);
+                } else {
+                    // 데모 모드
+                    currentUser = { email: email, displayName: email.split('@')[0] };
+                    isGuest = false;
+                    localStorage.setItem('demoUser', JSON.stringify(currentUser));
+                    showAuthMessage('회원가입 성공! (데모 모드)', 'green');
+                    setTimeout(() => showMenu(), 1000);
+                }
+            } catch (error) {
+                showAuthMessage('회원가입 실패: ' + error.message);
+            }
+        }
+
+        function guestLogin() {
+            currentUser = { email: 'guest@mario.com', displayName: 'Guest_' + Math.random().toString(36).substr(2, 5) };
+            isGuest = true;
+            showMenu();
+        }
+
+        function logout() {
+            if (auth) {
+                auth.signOut();
+            }
+            currentUser = null;
+            isGuest = false;
+            localStorage.removeItem('demoUser');
+            showScreen('loginScreen');
+        }
+
+        function showAuthMessage(msg, color = 'red') {
+            const el = document.getElementById('authMessage');
+            el.textContent = msg;
+            el.style.color = color === 'green' ? '#2E7D32' : '#8B0000';
+        }
+
+        // 화면 전환 함수들
+        function showScreen(screenId) {
+            document.querySelectorAll('[id$="Screen"]').forEach(el => el.classList.add('hidden'));
+            document.getElementById(screenId).classList.remove('hidden');
+        }
+
+        function showMenu() {
+            showScreen('menuScreen');
+            const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Player';
+            document.getElementById('welcomeText').textContent = `환영합니다, ${name}!`;
+            document.getElementById('myBestScore').textContent = myBestScore;
+            loadMyBestScore();
+        }
+
+        async function loadMyBestScore() {
+            if (database && currentUser && !isGuest) {
+                try {
+                    const snapshot = await database.ref('scores/' + currentUser.uid).once('value');
+                    if (snapshot.val()) {
+                        myBestScore = snapshot.val().score || 0;
+                        document.getElementById('myBestScore').textContent = myBestScore;
+                    }
+                } catch (e) {
+                    console.log('점수 로드 실패');
+                }
+            }
+        }
+
+        async function showLeaderboard() {
+            showScreen('leaderboardScreen');
+            const listEl = document.getElementById('leaderboardList');
+            listEl.innerHTML = '<p class="text-xs text-center">로딩중...</p>';
+
+            let scores = [];
+
+            if (database) {
+                try {
+                    const snapshot = await database.ref('leaderboard').orderByChild('score').limitToLast(10).once('value');
+                    snapshot.forEach(child => {
+                        scores.push(child.val());
+                    });
+                    scores.reverse();
+                } catch (e) {
+                    scores = localScores.sort((a, b) => b.score - a.score).slice(0, 10);
+                }
+            } else {
+                scores = localScores.sort((a, b) => b.score - a.score).slice(0, 10);
+            }
+
+            if (scores.length === 0) {
+                listEl.innerHTML = '<p class="text-xs text-center">아직 기록이 없습니다</p>';
+                return;
+            }
+
+            listEl.innerHTML = scores.map((s, i) => `
+                <div class="bg-white pixel-border p-3 flex justify-between items-center text-xs">
+                    <span class="${i < 3 ? 'text-yellow-600' : ''}">${i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i + 1) + '.'} ${s.name}</span>
+                    <span class="text-red-600">${s.score}</span>
+                </div>
+            `).join('');
+        }
+
+        function showHowToPlay() {
+            showScreen('howToPlayScreen');
+        }
+
+        // 게임 변수들
+        let canvas, ctx;
+        let gameLoop;
+        let score = 0;
+        let coins = 0;
+        let lives = 3;
+        let gameRunning = false;
+        let cameraX = 0;
+
+        // 마리오 객체
+        const mario = {
+            x: 100,
+            y: 300,
+            width: 32,
+            height: 40,
+            vx: 0,
+            vy: 0,
+            jumping: false,
+            grounded: false,
+            facing: 1,
+            frame: 0
+        };
+
+        // 게임 요소들
+        let platforms = [];
+        let enemies = [];
+        let coinItems = [];
+        let clouds = [];
+
+        // 입력 상태
+        const keys = {
+            left: false,
+            right: false,
+            jump: false
+        };
+
+        // 게임 상수
+        const GRAVITY = 0.6;
+        const JUMP_FORCE = -14;
+        const MOVE_SPEED = 5;
+        const GROUND_Y = 350;
+
+        function startGame() {
+            showScreen('gameScreen');
+            canvas = document.getElementById('gameCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // 게임 초기화
+            score = 0;
+            coins = 0;
+            lives = 3;
+            cameraX = 0;
+            gameRunning = true;
+            
+            mario.x = 100;
+            mario.y = 300;
+            mario.vx = 0;
+            mario.vy = 0;
+            mario.jumping = false;
+            mario.grounded = false;
+            
+            generateLevel();
+            updateUI();
+            
+            if (gameLoop) cancelAnimationFrame(gameLoop);
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        function generateLevel() {
+            platforms = [];
+            enemies = [];
+            coinItems = [];
+            clouds = [];
+            
+            // 기본 바닥
+            for (let i = 0; i < 100; i++) {
+                // 랜덤하게 구멍 생성
+                if (i > 10 && Math.random() < 0.1 && i % 5 === 0) {
+                    continue; // 구멍
+                }
+                platforms.push({
+                    x: i * 80,
+                    y: GROUND_Y,
+                    width: 80,
+                    height: 50,
+                    type: 'ground'
+                });
+            }
+            
+            // 플랫폼 생성
+            for (let i = 0; i < 50; i++) {
+                if (Math.random() < 0.3) {
+                    const px = 400 + i * 300 + Math.random() * 200;
+                    const py = 200 + Math.random() * 100;
+                    platforms.push({
+                        x: px,
+                        y: py,
+                        width: 100 + Math.random() * 50,
+                        height: 20,
+                        type: 'brick'
+                    });
+                    
+                    // 플랫폼 위에 코인
+                    if (Math.random() < 0.7) {
+                        coinItems.push({
+                            x: px + 40,
+                            y: py - 40,
+                            collected: false
+                        });
+                    }
+                }
+            }
+            
+            // 바닥 위 코인
+            for (let i = 0; i < 80; i++) {
+                if (Math.random() < 0.4) {
+                    coinItems.push({
+                        x: 300 + i * 150 + Math.random() * 100,
+                        y: GROUND_Y - 60 - Math.random() * 50,
+                        collected: false
+                    });
+                }
+            }
+            
+            // 적 생성
+            for (let i = 0; i < 40; i++) {
+                enemies.push({
+                    x: 600 + i * 400 + Math.random() * 200,
+                    y: GROUND_Y - 30,
+                    width: 32,
+                    height: 30,
+                    vx: -1.5,
+                    alive: true,
+                    frame: 0
+                });
+            }
+            
+            // 구름
+            for (let i = 0; i < 30; i++) {
+                clouds.push({
+                    x: i * 400 + Math.random() * 300,
+                    y: 30 + Math.random() * 80,
+                    size: 40 + Math.random() * 30
+                });
+            }
+        }
+
+        function update() {
+            if (!gameRunning) return;
+            
+            // 입력 처리
+            if (keys.left) mario.vx = -MOVE_SPEED;
+            else if (keys.right) mario.vx = MOVE_SPEED;
+            else mario.vx *= 0.8;
+            
+            if (keys.jump && mario.grounded && !mario.jumping) {
+                mario.vy = JUMP_FORCE;
+                mario.jumping = true;
+                mario.grounded = false;
+            }
+            
+            // 물리
+            mario.vy += GRAVITY;
+            mario.x += mario.vx;
+            mario.y += mario.vy;
+            
+            // 방향
+            if (mario.vx > 0.5) mario.facing = 1;
+            else if (mario.vx < -0.5) mario.facing = -1;
+            
+            // 카메라 추적
+            if (mario.x - cameraX > 350) cameraX = mario.x - 350;
+            if (mario.x - cameraX < 150) cameraX = Math.max(0, mario.x - 150);
+            
+            // 점수 (거리 기반)
+            const newScore = Math.max(score, Math.floor((mario.x - 100) / 10));
+            if (newScore > score) {
+                score = newScore;
+                updateUI();
+            }
+            
+            // 충돌 검사
+            mario.grounded = false;
+            
+            for (const p of platforms) {
+                if (checkCollision(mario, p)) {
+                    // 위에서 착지
+                    if (mario.vy > 0 && mario.y + mario.height - mario.vy <= p.y + 10) {
+                        mario.y = p.y - mario.height;
+                        mario.vy = 0;
+                        mario.grounded = true;
+                        mario.jumping = false;
+                    }
+                    // 아래에서 충돌
+                    else if (mario.vy < 0 && mario.y - mario.vy >= p.y + p.height - 10) {
+                        mario.y = p.y + p.height;
+                        mario.vy = 0;
+                    }
+                    // 옆에서 충돌
+                    else {
+                        if (mario.vx > 0) mario.x = p.x - mario.width;
+                        else if (mario.vx < 0) mario.x = p.x + p.width;
+                        mario.vx = 0;
+                    }
+                }
+            }
+            
+            // 코인 수집
+            for (const coin of coinItems) {
+                if (!coin.collected && checkCollision(mario, { x: coin.x, y: coin.y, width: 24, height: 24 })) {
+                    coin.collected = true;
+                    coins++;
+                    score += 10;
+                    updateUI();
+                }
+            }
+            
+            // 적 처리
+            for (const enemy of enemies) {
+                if (!enemy.alive) continue;
+                
+                enemy.x += enemy.vx;
+                enemy.frame = (enemy.frame + 0.1) % 2;
+                
+                // 화면 밖으로 나가면 방향 전환
+                if (enemy.x < cameraX - 100) enemy.vx = 1.5;
+                if (enemy.x > cameraX + 900) enemy.vx = -1.5;
+                
+                if (checkCollision(mario, enemy)) {
+                    // 위에서 밟기
+                    if (mario.vy > 0 && mario.y + mario.height - mario.vy < enemy.y + 10) {
+                        enemy.alive = false;
+                        mario.vy = JUMP_FORCE * 0.6;
+                        score += 50;
+                        updateUI();
+                    } else {
+                        // 피해 받음
+                        takeDamage();
+                    }
+                }
+            }
+            
+            // 구덩이 추락
+            if (mario.y > 500) {
+                lives = 0;
+                gameOver();
+                return;
+            }
+            
+            // 왼쪽 경계
+            if (mario.x < cameraX) mario.x = cameraX;
+            
+            // 그리기
+            draw();
+            
+            gameLoop = requestAnimationFrame(update);
+        }
+
+        function checkCollision(a, b) {
+            return a.x < b.x + b.width &&
+                   a.x + a.width > b.x &&
+                   a.y < b.y + b.height &&
+                   a.y + a.height > b.y;
+        }
+
+        function takeDamage() {
+            lives--;
+            updateUI();
+            
+            if (lives <= 0) {
+                gameOver();
+            } else {
+                // 무적 시간 & 위치 리셋
+                mario.x = Math.max(100, cameraX + 100);
+                mario.y = 200;
+                mario.vy = 0;
+            }
+        }
+
+        function draw() {
+            // 하늘 배경
+            ctx.fillStyle = '#5c94fc';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 구름
+            ctx.fillStyle = 'white';
+            for (const cloud of clouds) {
+                const cx = cloud.x - cameraX;
+                if (cx > -100 && cx < 900) {
+                    drawCloud(cx, cloud.y, cloud.size);
+                }
+            }
+            
+            // 플랫폼
+            for (const p of platforms) {
+                const px = p.x - cameraX;
+                if (px > -100 && px < 900) {
+                    if (p.type === 'ground') {
+                        // 잔디
+                        ctx.fillStyle = '#4CAF50';
+                        ctx.fillRect(px, p.y, p.width, 10);
+                        // 흙
+                        ctx.fillStyle = '#8B4513';
+                        ctx.fillRect(px, p.y + 10, p.width, p.height - 10);
+                    } else {
+                        // 벽돌
+                        ctx.fillStyle = '#D2691E';
+                        ctx.fillRect(px, p.y, p.width, p.height);
+                        ctx.strokeStyle = '#8B4513';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(px, p.y, p.width, p.height);
+                        // 벽돌 무늬
+                        ctx.beginPath();
+                        ctx.moveTo(px + p.width/2, p.y);
+                        ctx.lineTo(px + p.width/2, p.y + p.height);
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            // 코인
+            for (const coin of coinItems) {
+                if (coin.collected) continue;
+                const cx = coin.x - cameraX;
+                if (cx > -50 && cx < 850) {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.beginPath();
+                    ctx.arc(cx + 12, coin.y + 12, 12, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.fillStyle = '#FFA500';
+                    ctx.beginPath();
+                    ctx.arc(cx + 12, coin.y + 12, 8, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+            
+            // 적 (굼바)
+            for (const enemy of enemies) {
+                if (!enemy.alive) continue;
+                const ex = enemy.x - cameraX;
+                if (ex > -50 && ex < 850) {
+                    drawGoomba(ex, enemy.y, enemy.frame);
+                }
+            }
+            
+            // 마리오
+            drawMario(mario.x - cameraX, mario.y);
+        }
+
+        function drawCloud(x, y, size) {
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(x, y + size/2, size/2, 0, Math.PI * 2);
+            ctx.arc(x + size/2, y + size/3, size/2.5, 0, Math.PI * 2);
+            ctx.arc(x + size, y + size/2, size/2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function drawMario(x, y) {
+            ctx.save();
+            
+            if (mario.facing === -1) {
+                ctx.translate(x + mario.width, y);
+                ctx.scale(-1, 1);
+                x = 0;
+                y = 0;
+            }
+            
+            // 모자
+            ctx.fillStyle = '#e52521';
+            ctx.fillRect(x + 4, y, 24, 8);
+            ctx.fillRect(x, y + 8, 32, 8);
+            
+            // 얼굴
+            ctx.fillStyle = '#ffc0a0';
+            ctx.fillRect(x + 4, y + 12, 20, 12);
+            
+            // 눈
+            ctx.fillStyle = 'black';
+            ctx.fillRect(x + 8, y + 14, 4, 4);
+            
+            // 몸
+            ctx.fillStyle = '#e52521';
+            ctx.fillRect(x + 4, y + 24, 24, 8);
+            
+            // 바지
+            ctx.fillStyle = '#0000ff';
+            ctx.fillRect(x + 4, y + 32, 10, 8);
+            ctx.fillRect(x + 18, y + 32, 10, 8);
+            
+            ctx.restore();
+        }
+
+        function drawGoomba(x, y, frame) {
+            // 몸통
+            ctx.fillStyle = '#8B4513';
+            ctx.beginPath();
+            ctx.ellipse(x + 16, y + 15, 14, 12, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 눈
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.ellipse(x + 10, y + 10, 4, 5, 0, 0, Math.PI * 2);
+            ctx.ellipse(x + 22, y + 10, 4, 5, 0, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.fillStyle = 'black';
+            ctx.beginPath();
+            ctx.arc(x + 10, y + 11, 2, 0, Math.PI * 2);
+            ctx.arc(x + 22, y + 11, 2, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // 발
+            ctx.fillStyle = '#654321';
+            const footOffset = Math.floor(frame) * 3;
+            ctx.fillRect(x + 4 + footOffset, y + 24, 8, 6);
+            ctx.fillRect(x + 20 - footOffset, y + 24, 8, 6);
+        }
+
+        function updateUI() {
+            document.getElementById('scoreDisplay').textContent = score;
+            document.getElementById('coinDisplay').textContent = coins;
+            document.getElementById('lifeDisplay').textContent = lives;
+        }
+
+        async function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(gameLoop);
+            
+            const finalScore = score + coins * 10;
+            document.getElementById('finalScore').textContent = finalScore;
+            document.getElementById('finalCoins').textContent = coins;
+            
+            // 최고 점수 갱신
+            if (finalScore > myBestScore) {
+                myBestScore = finalScore;
+                localStorage.setItem('myBestScore', myBestScore);
+            }
+            
+            // 점수 저장
+            await saveScore(finalScore);
+            
+            showScreen('gameOverScreen');
+        }
+
+        async function saveScore(finalScore) {
+            const name = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Guest';
+            const scoreData = {
+                name: name,
+                score: finalScore,
+                coins: coins,
+                timestamp: Date.now()
+            };
+            
+            // 로컬 저장
+            localScores.push(scoreData);
+            localScores.sort((a, b) => b.score - a.score);
+            localScores = localScores.slice(0, 100);
+            localStorage.setItem('marioScores', JSON.stringify(localScores));
+            
+            // Firebase 저장
+            if (database && currentUser && !isGuest) {
+                try {
+                    // 개인 최고 점수
+                    const userRef = database.ref('scores/' + currentUser.uid);
+                    const snapshot = await userRef.once('value');
+                    const currentBest = snapshot.val()?.score || 0;
+                    
+                    if (finalScore > currentBest) {
+                        await userRef.set(scoreData);
+                    }
+                    
+                    // 리더보드
+                    await database.ref('leaderboard').push(scoreData);
+                } catch (e) {
+                    console.log('점수 저장 실패:', e);
+                }
+            }
+        }
+
+        // 키보드 입력
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+                e.preventDefault();
+                keys.jump = true;
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+            if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+            if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') keys.jump = false;
+        });
+
+        // 모바일 터치 입력
+        document.getElementById('leftBtn')?.addEventListener('touchstart', (e) => { e.preventDefault(); keys.left = true; });
+        document.getElementById('leftBtn')?.addEventListener('touchend', () => keys.left = false);
+        document.getElementById('rightBtn')?.addEventListener('touchstart', (e) => { e.preventDefault(); keys.right = true; });
+        document.getElementById('rightBtn')?.addEventListener('touchend', () => keys.right = false);
+        document.getElementById('jumpBtn')?.addEventListener('touchstart', (e) => { e.preventDefault(); keys.jump = true; });
+        document.getElementById('jumpBtn')?.addEventListener('touchend', () => keys.jump = false);
+
+        // 마우스/터치 버튼 지원
+        document.getElementById('leftBtn')?.addEventListener('mousedown', () => keys.left = true);
+        document.getElementById('leftBtn')?.addEventListener('mouseup', () => keys.left = false);
+        document.getElementById('rightBtn')?.addEventListener('mousedown', () => keys.right = true);
+        document.getElementById('rightBtn')?.addEventListener('mouseup', () => keys.right = false);
+        document.getElementById('jumpBtn')?.addEventListener('mousedown', () => keys.jump = true);
+        document.getElementById('jumpBtn')?.addEventListener('mouseup', () => keys.jump = false);
+
+        // 자동 로그인 확인
+        window.onload = () => {
+            // 저장된 데모 사용자 확인
+            const savedUser = localStorage.getItem('demoUser');
+            if (savedUser) {
+                currentUser = JSON.parse(savedUser);
+                showMenu();
+            }
+            
+            // Firebase 인증 상태 확인
+            if (auth) {
+                auth.onAuthStateChanged((user) => {
+                    if (user) {
+                        currentUser = user;
+                        showMenu();
+                    }
+                });
+            }
+        };
+    </script>
+</body>
+</html>
